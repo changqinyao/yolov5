@@ -22,7 +22,7 @@ def test(data,
          weights=None,
          batch_size=16,
          imgsz=640,
-         conf_thres=0.001,
+         conf_thres=0.38,
          iou_thres=0.6,  # for NMS
          save_json=False,
          single_cls=False,
@@ -71,7 +71,7 @@ def test(data,
         data = yaml.load(f, Loader=yaml.FullLoader)  # model dict
     check_dataset(data)  # check
     nc = 1 if single_cls else int(data['nc'])  # number of classes
-    iouv = torch.linspace(0.5, 0.95, 10).to(device)  # iou vector for mAP@0.5:0.95
+    iouv = torch.linspace(0.5, 0.75, 6).to(device)  # iou vector for mAP@0.5:0.95
     niou = iouv.numel()
 
     # Dataloader
@@ -89,6 +89,10 @@ def test(data,
     p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
+
+    kaggle_ap,kaggle_p,kaggle_r=0,0,0
+    kaggle_ap_list,kaggle_p_list,kaggle_r_list=[],[],[]
+    eps=1e-9
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
         img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -154,6 +158,9 @@ def test(data,
 
             # Assign all predictions as incorrect
             correct = torch.zeros(pred.shape[0], niou, dtype=torch.bool, device=device)
+            if not nl:
+                fp=np.array(pred.shape[0],dtype=np.float64)
+                tp=np.array(0,dtype=np.float64)
             if nl:
                 detected = []  # target indices
                 tcls_tensor = labels[:, 0]
@@ -181,6 +188,12 @@ def test(data,
                                 correct[pi[j]] = ious[j] > iouv  # iou_thres is 1xn
                                 if len(detected) == nl:  # all targets already located in image
                                     break
+                tp=correct.sum(0).cpu().numpy()
+                fp=(len(correct)-correct.sum(0)).cpu().numpy()
+
+            kaggle_p_list.append(tp/(tp+fp+eps))
+            kaggle_r_list.append(tp/(nl+eps))
+            kaggle_ap_list.append(tp/(nl+fp+eps))
 
             # Append statistics (correct, conf, pcls, tcls)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))
@@ -193,6 +206,11 @@ def test(data,
             plot_images(img, output_to_target(output, width, height), paths, str(f), names)  # predictions
 
     # Compute statistics
+    kaggle_ap=np.mean(kaggle_ap_list)
+    kaggle_p=np.mean(kaggle_p_list)
+    kaggle_r=np.mean(kaggle_r_list)
+
+    print(f'kaggle_ap:{kaggle_ap.mean()},kaggle_p:{kaggle_p.mean()},kaggle_r:{kaggle_r.mean()}')
     stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
         p, r, ap, f1, ap_class = ap_per_class(*stats)
