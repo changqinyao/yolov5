@@ -158,15 +158,19 @@ def detect(save_img=False):
             #                                          (w, h))
             #         vid_writer.write(im0)
 
-
-        # i add
-        boxes, scores = det[:, :4], det[:, 4]
-        boxes_wh = xyxy2x0y0wh(boxes)
-        result = {
-                    'image_id': Path(p).name,
-                    'PredictionString': format_prediction_string(boxes_wh, scores)
-                }
-
+            # i add
+        if det is not None:
+            boxes, scores = det[:, :4], det[:, 4]
+            boxes_wh = xyxy2x0y0wh(boxes)
+            result = {
+                'image_id': Path(p).name.split('.')[0],
+                'PredictionString': format_prediction_string(boxes_wh, scores)
+            }
+        else:
+            result = {
+                'image_id': Path(p).name.split('.')[0],
+                'PredictionString': ''
+            }
         results.append(result)
 
     print('Done. (%.3fs)' % (time.time() - t0))
